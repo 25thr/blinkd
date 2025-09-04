@@ -182,7 +182,30 @@ struct FaceMesh468{
     cv::Rect roi = face & cv::Rect(0,0,frame.cols,frame.rows);
 
     cv::Mat crop = frame(roi);
-    cv::Mat blob = cv::dnn::blobFromImage(crop, 1.0/255.0, cv::Size(inW,inH), cv::Scalar(), true,false);
+    // Prepare the input in NHWC format manually:
+    cv::Mat resized;
+    cv::resize(crop, resized, cv::Size(inW, inH)); // resize to model input size
+
+    // Convert to float and normalize [0,1]
+    resized.convertTo(resized, CV_32FC3, 1.0/255.0);
+
+    // OpenCV loads BGR by default, if your model expects RGB, convert:
+    cv::cvtColor(resized, resized, cv::COLOR_BGR2RGB);
+
+    // Now create a blob in NHWC order:
+    int sizes[] = {1, inH, inW, 3}; // NHWC shape
+    cv::Mat blob(4, sizes, CV_32F);
+
+    // Copy data from resized into blob, ensuring NHWC layout:
+    for (int y = 0; y < inH; y++) {
+        for (int x = 0; x < inW; x++) {
+            cv::Vec3f pix = resized.at<cv::Vec3f>(y, x);
+            for (int c = 0; c < 3; c++) {
+                int idx[4] = {0, y, x, c};
+                blob.at<float>(idx) = pix[c];
+            }
+        }
+    }
     net.setInput(blob);
     std::vector<cv::Mat> outs; net.forward(outs);
     if(outs.empty()) return false;
