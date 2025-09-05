@@ -1,0 +1,60 @@
+# Build artifacts
+*.o
+*.obj
+*.lo
+*.la
+*.a
+*.lib
+*.so
+*.so.*
+*.dll
+*.dylib
+*.exe
+*.out
+*.app
+
+# Compiled source files
+*.gch
+*.pch
+
+# Precompiled headers
+*.h.gch
+*.hpp.gch
+
+# Debugging files
+*.dSYM/
+*.stackdump
+core
+core.*
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+
+# Autotools
+configure
+config.log
+config.status
+autom4te.cache/
+aclocal.m4
+m4/
+ltmain.sh
+libtool
+
+# Visual Studio Code
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Temporary files
+*~
+*.swp
+*.bak
+*.tmp
