@@ -1,6 +1,14 @@
-# blinkd
+<img align="left" style="width:260px" src="https://github.com/0x48piraj/blinkd/blob/master/docs/assets/blinkd_logo.png" width="288px">
+
+**Real-time blink detection engine turning blinks into actions for games, accessibility, and next-gen interfaces.**
 
 `blinkd` is essentially a **low-latency, hardware-agnostic, eye-blink input layer**, like a **"blink driver"** for real-time interactions.
+
+**Note for builders**
+
+*`blinkd` is a low-latency input kernel. It does one thing well: turn eyelid signals into clean events. Designed to be real-time and input-source neutral. If you're building with it, you're building from the metal up.*
+
+<br>
 
 This could become foundational tech for:
 
