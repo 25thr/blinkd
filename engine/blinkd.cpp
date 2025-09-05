@@ -1,12 +1,12 @@
 /*
-  Blink Detection + EAR Pipeline (single-binary C++17)
+  Blink Detection + EAR Pipeline (C++17)
   What this provides
    - Camera capture (OpenCV)
    - Face landmarks backend (choose one at build/run time):
        A) MediaPipe Face Mesh *compatible* ONNX (468 landmarks) via OpenCV DNN
        B) OpenCV Facemark LBF (68 landmarks) as a fallback
    - Eye Aspect Ratio (EAR) computed from landmarks (MediaPipe or 68pt mapping)
-   - Ultra-lightweight blink FSM (from previous C impl) integrated inline
+   - Ultra-lightweight blink FSM (from the C impl) integrated inline
    - UDP JSON event out (Unity/Unreal friendly)
    - Optional CPU pinning + high-priority thread
 
@@ -14,19 +14,18 @@
    * You must supply the landmark model file(s):
        - 468 landmarks ONNX (e.g., "face_landmarks_468.onnx")
        - or LBF model (e.g., "lbfmodel.yaml")
-   * This file focuses on a clean, minimal, *fast* single executable.
    * If you only want MediaPipe-style indices, use Backend::FaceMesh468.
 
   Build (Linux/macOS)
-    g++ -O3 -march=native -DNDEBUG -std=c++17 -o blinkd_ear blinkd_ear.cpp \
+    g++ -O3 -march=native -DNDEBUG -std=c++17 -o blinkd blinkd.cpp \
         `pkg-config --cflags --libs opencv4` -lpthread
 
   Example run (468-mesh backend + UDP)
-    ./blinkd_ear --camera 0 --backend 468 \
+    ./blinkd --camera 0 --backend 468 \
       --onnx /path/to/face_landmarks_468.onnx --udp 127.0.0.1:7777
 
   Example run (68-point LBF fallback)
-    ./blinkd_ear --camera 0 --backend 68 \
+    ./blinkd --camera 0 --backend 68 \
       --lbf /path/to/lbfmodel.yaml --udp 127.0.0.1:7777
 
   UDP event payload (one line JSON per event)
@@ -62,13 +61,13 @@
   #include <opencv2/face.hpp>
 #endif
 
-// ========================= time helpers =========================
+// Time helpers
 static inline uint64_t now_ms(){
   using namespace std::chrono;
   return duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
 }
 
-// ========================= UDP =========================
+// UDP
 struct UdpOut{ int sock=-1; sockaddr_in addr{}; bool enabled=false; };
 static int udp_open(UdpOut& u, const char* ip, uint16_t port){
   u.sock = ::socket(AF_INET, SOCK_DGRAM, 0); if(u.sock<0) return -1;
@@ -83,8 +82,7 @@ static void udp_send(UdpOut& u, const char* type, uint32_t t_ms, uint32_t dur_ms
   sendto(u.sock, buf, (size_t)n, 0, (sockaddr*)&u.addr, sizeof(u.addr));
 }
 
-// ========================= Blink FSM =========================
-
+// Blink FSM
 enum EyeState {EYE_OPEN=0,EYE_CLOSING,EYE_CLOSED,EYE_REFRACT};
 
 enum {
@@ -150,11 +148,10 @@ static uint32_t blinkdet2_update(BlinkDet2& b, uint32_t t_ms, float openL, float
   return ev;
 }
 
-// ========================= Landmark backends =========================
-
+// Landmark backends
 enum class Backend{ FaceMesh468, Facemark68 };
 
-// --- MediaPipe FaceMesh-compatible indices for EAR (left/right) ---
+// MediaPipe FaceMesh-compatible indices for EAR (left/right)
 // Left eye: p1=33, p4=133, p2=160, p6=144, p3=158, p5=153
 // Right eye: p1=263, p4=362, p2=387, p6=373, p3=385, p5=380
 static const int L_EAR[6] = {33,160,158,133,153,144};
@@ -166,12 +163,11 @@ static inline float EAR_from6(const cv::Point2f P[6]){
   double den = 2.0 * l2(P[0],P[3]) + 1e-9; return (float)(num/den);
 }
 
-// ========================= FaceMesh468 via ONNX (OpenCV DNN) =========================
+// FaceMesh468 via ONNX (OpenCV DNN)
 struct FaceMesh468{
   cv::dnn::Net net; int inW=192, inH=192; float conf_thr=0.5f; // adjust per model
   bool load(const std::string& onnx){ net = cv::dnn::readNetFromONNX(onnx); return !net.empty(); }
-  // Simple single-face pipeline: detect face via cv::Cascade as fallback; crop-center
-  // For production, use a stronger face detector (YuNet, SCRFD, etc.).
+  // Simple single-face pipeline: detect face via cv::Cascade as fallback
   cv::CascadeClassifier face_cascade;
   bool init_face(){ return face_cascade.load(cv::samples::findFile("haarcascade_frontalface_default.xml")); }
 
@@ -182,21 +178,21 @@ struct FaceMesh468{
     cv::Rect roi = face & cv::Rect(0,0,frame.cols,frame.rows);
 
     cv::Mat crop = frame(roi);
-    // Prepare the input in NHWC format manually:
+    // Prepare the input in NHWC format manually
     cv::Mat resized;
     cv::resize(crop, resized, cv::Size(inW, inH)); // resize to model input size
 
     // Convert to float and normalize [0,1]
     resized.convertTo(resized, CV_32FC3, 1.0/255.0);
 
-    // OpenCV loads BGR by default, if your model expects RGB, convert:
+    // Convert default BGR to RGB
     cv::cvtColor(resized, resized, cv::COLOR_BGR2RGB);
 
-    // Now create a blob in NHWC order:
+    // Create a blob in NHWC order
     int sizes[] = {1, inH, inW, 3}; // NHWC shape
     cv::Mat blob(4, sizes, CV_32F);
 
-    // Copy data from resized into blob, ensuring NHWC layout:
+    // Copy data from resized into blob, ensuring NHWC layout
     for (int y = 0; y < inH; y++) {
         for (int x = 0; x < inW; x++) {
             cv::Vec3f pix = resized.at<cv::Vec3f>(y, x);
@@ -224,7 +220,7 @@ struct FaceMesh468{
   }
 };
 
-// ========================= Facemark68 (OpenCV) =========================
+// Facemark68 (OpenCV)
 #ifdef HAVE_OPENCV_FACE
 struct Facemark68{
   cv::Ptr<cv::face::Facemark> fm;
@@ -238,21 +234,22 @@ struct Facemark68{
 };
 #endif
 
-// Map 68-pt indices to EAR (same as dlib’s convention)
-// Left eye: [36,37,38,39,40,41]  Right eye: [42,43,44,45,46,47]
+// Map 68-pt indices to EAR (same as dlib's convention)
+// Left eye: [36,37,38,39,40,41]
+// Right eye: [42,43,44,45,46,47]
 static inline float EAR_from68(const std::vector<cv::Point2f>& L, bool left){
   int base = left?36:42; cv::Point2f P[6] = { L[base+0], L[base+1], L[base+2], L[base+3], L[base+4], L[base+5] };
   return EAR_from6(P);
 }
 
-// ========================= CPU pinning (Linux only) =========================
+// CPU pinning (linux only)
 static void try_pin_to_core(int core){
 #ifdef __linux__
   cpu_set_t set; CPU_ZERO(&set); if(core>=0){ CPU_SET(core,&set); pthread_setaffinity_np(pthread_self(), sizeof(set), &set); }
 #endif
 }
 
-// ========================= CLI =========================
+// CLI / Glue
 struct Args{
   int cam=0; Backend backend=Backend::FaceMesh468; std::string onnx; std::string lbf;
   bool use_udp=false; std::string ip="127.0.0.1"; uint16_t port=7777; int pin_core=-1; bool show=false; int width=640, height=480;
@@ -334,9 +331,10 @@ if (a.backend == Backend::Facemark68) {
       if(ok && (int)pts.size()>=468){
         cv::Point2f A[6]; for(int i=0;i<6;i++) A[i]=pts[L_EAR[i]]; float earL=EAR_from6(A);
         for(int i=0;i<6;i++) A[i]=pts[R_EAR[i]]; float earR=EAR_from6(A);
-        // Map EAR to openness ~[0..1] with adaptive scaling
-        // Typical EAR open ~0.25-0.35, closed ~0.12-0.18 (rough). Normalize via running baselines inside EyeDet.
-        // Here we provide a simple linear mapping with clamp.
+        // Normalize EAR to an openness value in [0.0, 1.0] range
+        // Typical EAR values: ~0.25–0.35 (open), ~0.12–0.18 (closed) (subject-dependent)
+        // In production, use adaptive normalization (e.g., per-user calibration or running baselines)
+        // This implementation applies a simple clamped linear scaling
         auto map_ear=[&](float ear){ float x=(ear-0.12f)/(0.30f-0.12f); return std::max(0.f,std::min(1.f,x)); };
         openL = map_ear(earL); openR = map_ear(earR);
         if(a.show){ for(int i=0;i<6;i++) cv::circle(frame, pts[L_EAR[i]], 1, {0,255,0}, -1); for(int i=0;i<6;i++) cv::circle(frame, pts[R_EAR[i]], 1, {0,255,0}, -1); }

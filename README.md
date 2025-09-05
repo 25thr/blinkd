@@ -19,10 +19,12 @@ We're building a **real-time eye input kernel**, which:
 
 ## Features
 
-- **Real-time detector** (EMA-based adaptive thresholds + hysteresis + refractory)
-- Handles **one or two eyes**; emits `BLINK`, `LONG_BLINK`, `DOUBLE_BLINK`, `WINK_LEFT`, `WINK_RIGHT`
-- **IPC built-in:** UDP JSON events to your game engine, plus an _optional POSIX shared-memory ring buffer_ for high-rate pipelines
-- **O(1)** per sample, no external deps for the core
+The C implementation which is language-agnostic comes with,
+
+- **Real-time detector**: EMA-based adaptive thresholds + hysteresis + refractory
+- Handles **one or two eyes**: Emits `BLINK`, `LONG_BLINK`, `DOUBLE_BLINK`, `WINK_LEFT`, `WINK_RIGHT`
+- **IPC built-in**: UDP JSON events to your game engine, plus an _optional POSIX shared-memory ring buffer_ for high-rate pipelines
+- **O(1)** per sample: No external deps for the core
 
 ### Feeding
 
@@ -40,13 +42,13 @@ Provide _openness_ in `[0..1]` per eye at ~120–240 Hz. Map any upstream signal
 * In **Unity**: read with `UdpClient` and parse JSON; map to gameplay (e.g., slow-mo on `DOUBLE_BLINK`, pause on `LONG_BLINK`, left/right abilities on winks).
 * In **Unreal**: a small UDP receiver (UE’s `FUdpSocketReceiver`) → Blueprint events.
 
-We can also expose a local WebSocket API,
+We can also expose a local WebSocket API _(to be implemented)_,
 
 ```bash
 ws://localhost:8765
 ```
 
-### Tuning tips (already exposed in code)
+### Tuning
 
 * `min_blink_ms` (≥40 ms), `long_blink_ms` (\~400 ms), `double_gap_ms` (\~300 ms)
 * `close_thresh_k` / `open_thresh_k` control sensitivity & hysteresis
@@ -61,12 +63,6 @@ gcc -O3 -march=native -Wall -Wextra -o blinkd blinkd.c -lm -lpthread
 ```
 
 Clients (games, Unity, Godot, etc.) can easily consume them.
-
-### Game Engine Plugins
-
-* **Unity**: Write a C# plugin that connects to your blink event stream (UDP, shared mem, or socket)
-* **Unreal Engine**: Use a C++ plugin or Blueprints node to trigger logic based on blinks
-* **Godot**: GDScript or C++ extension that listens to shared memory or socket
 
 ## Architecture
 
