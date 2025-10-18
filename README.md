@@ -8,8 +8,6 @@
 
 *`blinkd` is a low-latency input kernel. It does one thing well: turn eyelid signals into clean events. Designed to be real-time and input-source neutral. If you're building with it, you're building from the metal up.*
 
-<br>
-
 This could become foundational tech for:
 
 * **Games** (blink-to-shoot, wink-to-jump, etc.)
@@ -56,6 +54,28 @@ We can also expose a local WebSocket API _(to be implemented)_,
 ws://localhost:8765
 ```
 
+#### Shared-memory IPC support (POSIX only)
+
+* It creates a named shared memory region (`/blinkring`) that both producer (camera pipeline) and consumer (game engine or monitor tool) can map.
+* Each slot is a `BlinkSample` (timestamp + two openness floats).
+* The ring uses simple head/tail pointers with `__sync_synchronize()` memory barrier.
+* You can push samples at 200 Hz safely from one process and consume from another with minimal overhead.
+
+**Usage example (producer):**
+
+```c
+BlinkShm* shm = blink_shm_open("/blinkring", 4096);
+while(1){
+  float L = 0.9f, R = 0.8f;
+  uint32_t t = (uint32_t)(clock()*1000/CLOCKS_PER_SEC);
+  blink_shm_push(shm, t, L, R);
+  usleep(5000);
+}
+blink_shm_close(shm);
+```
+
+The consumer (another process) can map the same `/blinkring` and read in a loop.
+
 ### Tuning
 
 * `min_blink_ms` (≥40 ms), `long_blink_ms` (\~400 ms), `double_gap_ms` (\~300 ms)
@@ -65,7 +85,7 @@ ws://localhost:8765
 ## Build & run
 
 ```bash
-gcc -O3 -march=native -Wall -Wextra -o blinkd blinkd.c -lm -lpthread
+cmake --build . --config Release
 # Stream samples via stdin (time_ms openL openR), broadcast to localhost:7777
 ./blinkd --udp 127.0.0.1:7777 --rate 200
 ```
