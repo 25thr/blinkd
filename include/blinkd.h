@@ -105,6 +105,10 @@ void blink_shm_close(BlinkShm* shm);
 
 #endif // __unix__
 
+#ifdef BLINKD_DEBUG
+void blink_debug_dump(const BlinkHandle* h);
+#endif
+
 #ifdef __cplusplus
 }
 #endif

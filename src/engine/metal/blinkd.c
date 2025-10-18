@@ -278,6 +278,17 @@ void blink_udp_close(int sock) {
 #endif
 }
 
+#ifdef BLINKD_DEBUG
+void blink_debug_dump(const BlinkHandle* h) {
+    if (!h) return;
+    const float baseL = h->L.baseline, devL = h->L.dev;
+    const float baseR = h->R.baseline, devR = h->R.dev;
+    fprintf(stderr,
+        "[blinkd-debug] L(base=%.3f, dev=%.3f) R(base=%.3f, dev=%.3f)\n",
+        baseL, devL, baseR, devR);
+}
+#endif
+
 // POSIX shared-memory ring buffer
 #ifdef __unix__
 #include <sys/mman.h>

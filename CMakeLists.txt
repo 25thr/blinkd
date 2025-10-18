@@ -5,6 +5,14 @@ project(blinkd LANGUAGES C)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
+# Option: Enable debug output
+option(BLINKD_DEBUG "Enable blinkd debug output" OFF)
+
+if(BLINKD_DEBUG)
+    add_compile_definitions(BLINKD_DEBUG)
+    message(STATUS "[OK] blinkd debug output enabled")
+endif()
+
 # Include header path
 include_directories(${CMAKE_SOURCE_DIR}/include)
 
