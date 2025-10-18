@@ -103,7 +103,7 @@ static void eyedet_init(EyeDet* d,float init_open){
   d->min_ms=40; d->long_ms=400; d->max_ms=800;
   d->dbl_gap_ms=300; d->refr_ms=60;
   d->baseline=init_open; d->dev=0.03f; d->last=init_open;
-  d->st=EYE_OPEN; d->enter_ms=(uint32_t)now_monotonic_ms();
+  d->st=EYE_OPEN; d->enter_ms = 0; // accept relative timestamp streams (t_ms starting at 0)
 }
 
 static inline void update_stats(EyeDet* d,float open,int open_like){
