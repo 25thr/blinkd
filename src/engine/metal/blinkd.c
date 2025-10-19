@@ -83,10 +83,10 @@ typedef struct {
   uint8_t last_was_blink;
 } EyeDet;
 
-typedef struct BlinkHandle {
+typedef struct BlinkdHandle {
   EyeDet L, R;
   uint32_t wink_min_ms;
-} BlinkHandle;
+} BlinkdHandle;
 
 // Utility helpers
 static inline uint64_t now_monotonic_ms(void){
@@ -153,8 +153,8 @@ static uint32_t eyedet_update(EyeDet* d,uint32_t t_ms,float open,uint32_t* blink
 }
 
 // Public API implementation
-BlinkHandle* blink_create(float init_open){
-  BlinkHandle* h=(BlinkHandle*)calloc(1,sizeof(BlinkHandle));
+BlinkdHandle* blinkd_create(float init_open){
+  BlinkdHandle* h=(BlinkdHandle*)calloc(1,sizeof(BlinkdHandle));
   if(!h) return NULL;
   eyedet_init(&h->L,init_open);
   eyedet_init(&h->R,init_open);
@@ -162,14 +162,14 @@ BlinkHandle* blink_create(float init_open){
   return h;
 }
 
-void blink_destroy(BlinkHandle* h){ if(h) free(h); }
+void blinkd_destroy(BlinkdHandle* h){ if(h) free(h); }
 
-void blink_set_ema_alpha(BlinkHandle* h,float a){ h->L.ema_alpha=h->R.ema_alpha=a; }
-void blink_set_noise_alpha(BlinkHandle* h,float a){ h->L.noise_alpha=h->R.noise_alpha=a; }
-void blink_set_thresholds(BlinkHandle* h,float close_k,float open_k){
+void blinkd_set_ema_alpha(BlinkdHandle* h,float a){ h->L.ema_alpha=h->R.ema_alpha=a; }
+void blinkd_set_noise_alpha(BlinkdHandle* h,float a){ h->L.noise_alpha=h->R.noise_alpha=a; }
+void blinkd_set_thresholds(BlinkdHandle* h,float close_k,float open_k){
   h->L.close_k=h->R.close_k=close_k; h->L.open_k=h->R.open_k=open_k;
 }
-void blink_set_timing(BlinkHandle* h,uint32_t min_blink_ms,uint32_t long_blink_ms,
+void blinkd_set_timing(BlinkdHandle* h,uint32_t min_blink_ms,uint32_t long_blink_ms,
                       uint32_t max_blink_ms,uint32_t double_gap_ms,uint32_t refractory_ms){
   h->L.min_ms=h->R.min_ms=min_blink_ms;
   h->L.long_ms=h->R.long_ms=long_blink_ms;
@@ -177,17 +177,17 @@ void blink_set_timing(BlinkHandle* h,uint32_t min_blink_ms,uint32_t long_blink_m
   h->L.dbl_gap_ms=h->R.dbl_gap_ms=double_gap_ms;
   h->L.refr_ms=h->R.refr_ms=refractory_ms;
 }
-void blink_set_wink_min(BlinkHandle* h,uint32_t wink_min_ms){ h->wink_min_ms=wink_min_ms; }
+void blinkd_set_wink_min(BlinkdHandle* h,uint32_t wink_min_ms){ h->wink_min_ms=wink_min_ms; }
 
-void blink_set_preset(BlinkHandle* h,BlinkPreset p){
+void blinkd_set_preset(BlinkdHandle* h,BlinkPreset p){
   switch(p){
-    case BLINK_PRESET_LOW:   blink_set_thresholds(h,3.0f,2.0f); blink_set_timing(h,60,500,1000,300,80); break;
-    case BLINK_PRESET_HIGH:  blink_set_thresholds(h,2.0f,1.2f); blink_set_timing(h,30,300,700,250,50); break;
-    default: /* balanced */  blink_set_thresholds(h,2.5f,1.5f); blink_set_timing(h,40,400,800,300,60); break;
+    case BLINK_PRESET_LOW:   blinkd_set_thresholds(h,3.0f,2.0f); blinkd_set_timing(h,60,500,1000,300,80); break;
+    case BLINK_PRESET_HIGH:  blinkd_set_thresholds(h,2.0f,1.2f); blinkd_set_timing(h,30,300,700,250,50); break;
+    default: /* balanced */  blinkd_set_thresholds(h,2.5f,1.5f); blinkd_set_timing(h,40,400,800,300,60); break;
   }
 }
 
-int blink_update(BlinkHandle* h,uint32_t t_ms,float openL,float openR,
+int blinkd_update(BlinkdHandle* h,uint32_t t_ms,float openL,float openR,
                  uint32_t* out_dur_ms,uint32_t* out_flags){
   uint32_t msL=0,msR=0;
   uint32_t evL=eyedet_update(&h->L,t_ms,openL,&msL);
@@ -205,26 +205,26 @@ int blink_update(BlinkHandle* h,uint32_t t_ms,float openL,float openR,
   return (int)ev;
 }
 
-int blink_update_single(BlinkHandle* h,uint32_t t_ms,float open,
+int blinkd_update_single(BlinkdHandle* h,uint32_t t_ms,float open,
                         uint32_t* out_dur_ms,uint32_t* out_flags){
   uint32_t ev=eyedet_update(&h->L,t_ms,open,out_dur_ms);
   if(out_flags) *out_flags=ev;
   return (int)ev;
 }
 
-void blink_reset_baseline(BlinkHandle* h,float baseline,float dev){
+void blinkd_reset_baseline(BlinkdHandle* h,float baseline,float dev){
   h->L.baseline=h->R.baseline=baseline;
   h->L.dev=h->R.dev=dev;
 }
 
-void blink_calibrate_sample(BlinkHandle* h,float open){
+void blinkd_calibrate_sample(BlinkdHandle* h,float open){
   // simple calibration using open-eye samples
   h->L.baseline=ema(h->L.baseline,open,h->L.ema_alpha);
   h->R.baseline=ema(h->R.baseline,open,h->R.ema_alpha);
 }
 
-// UDP minimal IPC (cross-platform)
-int blink_udp_open(const char* ip, uint16_t port) {
+// UDP IPC (cross-platform)
+int blinkd_udp_open(const char* ip, uint16_t port) {
     int sock = socket(AF_INET, SOCK_DGRAM, 0);
     if (sock < 0) return -1;
 
@@ -259,7 +259,7 @@ int blink_udp_open(const char* ip, uint16_t port) {
     return sock;
 }
 
-void blink_udp_send(int sock, const char* type, uint32_t t_ms, uint32_t dur_ms, uint32_t flags) {
+void blinkd_udp_send(int sock, const char* type, uint32_t t_ms, uint32_t dur_ms, uint32_t flags) {
     if (sock < 0) return;
 
     char buf[256];
@@ -270,7 +270,7 @@ void blink_udp_send(int sock, const char* type, uint32_t t_ms, uint32_t dur_ms, 
     if (n > 0) send(sock, buf, (size_t)n, 0);
 }
 
-void blink_udp_close(int sock) {
+void blinkd_udp_close(int sock) {
 #ifdef _WIN32
     if (sock >= 0) closesocket(sock);
 #else
@@ -279,7 +279,7 @@ void blink_udp_close(int sock) {
 }
 
 #ifdef BLINKD_DEBUG
-void blink_debug_dump(const BlinkHandle* h) {
+void blinkd_debug_dump(const BlinkdHandle* h) {
     if (!h) return;
     const float baseL = h->L.baseline, devL = h->L.dev;
     const float baseR = h->R.baseline, devR = h->R.dev;
@@ -297,49 +297,49 @@ void blink_debug_dump(const BlinkHandle* h) {
 typedef struct {
   uint32_t t_ms;
   float openL, openR;
-} BlinkSample;
+} BlinkdSample;
 
-typedef struct BlinkShm {
+typedef struct BlinkdShm {
   size_t cap;
   volatile size_t head;
   volatile size_t tail;
-  BlinkSample data[1];
-} BlinkShmRaw;
+  BlinkdSample data[1];
+} BlinkdShmRaw;
 
-struct BlinkShm {
-  BlinkShmRaw* r;
+struct BlinkdShm {
+  BlinkdShmRaw* r;
   size_t bytes;
   char name[64];
   int fd;
 };
 
-BlinkShm* blink_shm_open(const char* name, size_t capacity){
+BlinkdShm* blinkd_shm_open(const char* name, size_t capacity){
   if(!name || name[0] != '/') { fprintf(stderr,"shm name must start with '/'\n"); return NULL; }
-  size_t bytes = sizeof(BlinkShmRaw) + (capacity-1)*sizeof(BlinkSample);
+  size_t bytes = sizeof(BlinkdShmRaw) + (capacity-1)*sizeof(BlinkdSample);
   int fd = shm_open(name, O_CREAT|O_RDWR, 0600);
   if(fd < 0){ perror("shm_open"); return NULL; }
   if(ftruncate(fd, (off_t)bytes) < 0){ perror("ftruncate"); close(fd); return NULL; }
-  BlinkShmRaw* r = (BlinkShmRaw*)mmap(NULL, bytes, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
+  BlinkdShmRaw* r = (BlinkdShmRaw*)mmap(NULL, bytes, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
   if(r == MAP_FAILED){ perror("mmap"); close(fd); return NULL; }
   r->cap = capacity; r->head = r->tail = 0;
-  BlinkShm* h = (BlinkShm*)calloc(1,sizeof(BlinkShm));
+  BlinkdShm* h = (BlinkdShm*)calloc(1,sizeof(BlinkdShm));
   h->r = r; h->bytes = bytes; h->fd = fd; strncpy(h->name, name, sizeof(h->name)-1);
   return h;
 }
 
-int blink_shm_push(BlinkShm* shm, uint32_t t_ms, float openL, float openR){
+int blinkd_shm_push(BlinkdShm* shm, uint32_t t_ms, float openL, float openR){
   if(!shm || !shm->r) return -1;
-  BlinkShmRaw* r = shm->r;
+  BlinkdShmRaw* r = shm->r;
   size_t next = (r->head + 1) % r->cap;
   if(next == r->tail) return -1; // full
-  BlinkSample s = { t_ms, openL, openR };
+  BlinkdSample s = { t_ms, openL, openR };
   r->data[r->head] = s;
   __sync_synchronize();
   r->head = next;
   return 0;
 }
 
-void blink_shm_close(BlinkShm* shm){
+void blinkd_shm_close(BlinkdShm* shm){
   if(!shm) return;
   if(shm->r && shm->bytes) munmap((void*)shm->r, shm->bytes);
   if(shm->fd >= 0) close(shm->fd);

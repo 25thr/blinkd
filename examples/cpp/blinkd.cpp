@@ -216,8 +216,8 @@ int main(int argc, char **argv) {
   fm.init_face();
 
   // Link to blinkd SDK
-  BlinkHandle *B = blink_create(1.0f);
-  blink_set_preset(B, BLINK_PRESET_BALANCED);
+  BlinkdHandle *B = blinkd_create(1.0f);
+  blinkd_set_preset(B, BLINK_PRESET_BALANCED);
 
   uint64_t t0 = now_ms();
   cv::Mat frame;
@@ -230,7 +230,7 @@ int main(int argc, char **argv) {
     bool ok = fm.infer(frame, pts);
     if (!ok || pts.size() < 468) continue;
 
-    // Compute EAR → openness [0..1]
+    // Compute EAR: openness [0..1]
     cv::Point2f A[6];
     for (int i = 0; i < 6; i++) A[i] = pts[L_EAR[i]];
     float earL = EAR_from6(A);
@@ -241,7 +241,7 @@ int main(int argc, char **argv) {
     float openR = map_ear(earR);
 
     uint32_t dur_ms = 0, flags = 0;
-    blink_update(B, t_ms, openL, openR, &dur_ms, &flags);
+    blinkd_update(B, t_ms, openL, openR, &dur_ms, &flags);
 
     if (flags) {
       if (a.use_udp) {
@@ -268,7 +268,7 @@ int main(int argc, char **argv) {
     }
   }
 
-  blink_destroy(B);
+  blinkd_destroy(B);
   if (a.use_udp) close(udp.sock);
   return 0;
 }

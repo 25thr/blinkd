@@ -36,10 +36,10 @@ if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) {
 }
 #endif
 
-    BlinkHandle* B = blink_create(1.0f);
-    blink_set_preset(B, BLINK_PRESET_HIGH);
+    BlinkdHandle* B = blinkd_create(1.0f);
+    blinkd_set_preset(B, BLINK_PRESET_HIGH);
     if (!B) {
-        printf("[blinkd] ERROR: Failed to create BlinkHandle\n");
+        printf("[blinkd] ERROR: Failed to create blinkd instance.\n");
 #ifdef _WIN32
   WSACleanup();
 #endif
@@ -47,10 +47,10 @@ if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) {
     }
 
     printf("[blinkd] Opening UDP socket to 127.0.0.1:7777...\n");
-    int sock = blink_udp_open("127.0.0.1", 7777);
+    int sock = blinkd_udp_open("127.0.0.1", 7777);
     if (sock < 0) {
         printf("[blinkd] ERROR: Failed to open UDP socket (code %d)\n", sock);
-        blink_destroy(B);
+        blinkd_destroy(B);
 #ifdef _WIN32
   WSACleanup();
 #endif
@@ -72,14 +72,14 @@ if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) {
 
         if (sscanf(line, "%u %f %f", &t, &L, &R) == 3) {
             uint32_t dur = 0, flags = 0;
-            blink_update(B, t, L, R, &dur, &flags);
+            blinkd_update(B, t, L, R, &dur, &flags);
 #ifdef BLINKD_DEBUG
-blink_debug_dump(B);
+blinkd_debug_dump(B);
 #endif
 
             if (flags & BLINK_EVT_BLINK) {
                 printf("[blinkd] Blink detected! Duration=%ums Flags=0x%X\n", dur, flags);
-                blink_udp_send(sock, "blink", t, dur, flags);
+                blinkd_udp_send(sock, "blink", t, dur, flags);
             }
 
         if (++count % 1000 == 0)
@@ -89,8 +89,8 @@ blink_debug_dump(B);
 
     printf("[blinkd] End of input stream. Cleaning up...\n");
 
-    blink_udp_close(sock);
-    blink_destroy(B);
+    blinkd_udp_close(sock);
+    blinkd_destroy(B);
 #ifdef _WIN32
   WSACleanup();
 #endif

@@ -25,10 +25,8 @@
 extern "C" {
 #endif
 
-// -------------------------------------------------------------
 // Types / constants
-// -------------------------------------------------------------
-typedef struct BlinkHandle BlinkHandle;
+typedef struct BlinkdHandle BlinkdHandle;
 
 enum {
   BLINK_EVT_NONE        = 0,
@@ -39,74 +37,64 @@ enum {
   BLINK_EVT_WINK_RIGHT  = 1<<4
 };
 
-// -------------------------------------------------------------
 // Lifecycle
-// -------------------------------------------------------------
-BlinkHandle* blink_create(float init_open);
-void blink_destroy(BlinkHandle* h);
+BlinkdHandle* blinkd_create(float init_open);
+void blinkd_destroy(BlinkdHandle* h);
 
-// -------------------------------------------------------------
 // Configuration (optional; call before first update)
-// -------------------------------------------------------------
-void blink_set_ema_alpha(BlinkHandle* h, float a);
-void blink_set_noise_alpha(BlinkHandle* h, float a);
-void blink_set_thresholds(BlinkHandle* h, float close_k, float open_k);
-void blink_set_timing(BlinkHandle* h,
-                      uint32_t min_blink_ms, uint32_t long_blink_ms,
-                      uint32_t max_blink_ms, uint32_t double_gap_ms,
+void blinkd_set_ema_alpha(BlinkdHandle* h, float a);
+void blinkd_set_noise_alpha(BlinkdHandle* h, float a);
+void blinkd_set_thresholds(BlinkdHandle* h, float close_k, float open_k);
+void blinkd_set_timing(BlinkdHandle* h,
+                      uint32_t min_blinkd_ms, uint32_t long_blinkd_ms,
+                      uint32_t max_blinkd_ms, uint32_t double_gap_ms,
                       uint32_t refractory_ms);
-void blink_set_wink_min(BlinkHandle* h, uint32_t wink_min_ms);
+void blinkd_set_wink_min(BlinkdHandle* h, uint32_t wink_min_ms);
 
 // Presets for convenience
 typedef enum { BLINK_PRESET_LOW=0, BLINK_PRESET_BALANCED=1, BLINK_PRESET_HIGH=2 } BlinkPreset;
-void blink_set_preset(BlinkHandle* h, BlinkPreset p);
+void blinkd_set_preset(BlinkdHandle* h, BlinkPreset p);
 
-// -------------------------------------------------------------
 // Runtime updates
-// -------------------------------------------------------------
-int blink_update(BlinkHandle* h, uint32_t t_ms,
+int blinkd_update(BlinkdHandle* h, uint32_t t_ms,
                  float openL, float openR,
                  uint32_t* out_dur_ms, uint32_t* out_flags);
 
-int blink_update_single(BlinkHandle* h, uint32_t t_ms,
+int blinkd_update_single(BlinkdHandle* h, uint32_t t_ms,
                         float open, uint32_t* out_dur_ms, uint32_t* out_flags);
 
 // Calibration helpers
-void blink_reset_baseline(BlinkHandle* h, float baseline, float dev);
-void blink_calibrate_sample(BlinkHandle* h, float open);
+void blinkd_reset_baseline(BlinkdHandle* h, float baseline, float dev);
+void blinkd_calibrate_sample(BlinkdHandle* h, float open);
 
-// -------------------------------------------------------------
 // IPC utilities (optional, for engines / external listeners)
-// -------------------------------------------------------------
-int  blink_udp_open(const char* ip, uint16_t port);
-void blink_udp_send(int sock, const char* type,
+int  blinkd_udp_open(const char* ip, uint16_t port);
+void blinkd_udp_send(int sock, const char* type,
                     uint32_t t_ms, uint32_t dur_ms, uint32_t flags);
-void blink_udp_close(int sock);
+void blinkd_udp_close(int sock);
 
-// -------------------------------------------------------------
 // Shared-memory producer API (POSIX only)
-// -------------------------------------------------------------
 #ifdef __unix__
 
 // Single-producer, single-consumer ring buffer
-typedef struct BlinkShm BlinkShm;
+typedef struct BlinkdShm BlinkdShm;
 
 // Create or open a shared-memory ring buffer
-// name: e.g. "/blinkring" (must begin with '/')
+// name: e.g. "/blinkdring" (must begin with '/')
 // capacity: number of samples (recommend 1024+)
-BlinkShm* blink_shm_open(const char* name, size_t capacity);
+BlinkdShm* blinkd_shm_open(const char* name, size_t capacity);
 
 // Push one sample (t_ms, openL, openR) into the ring.
 // Returns 0 on success, -1 if full.
-int blink_shm_push(BlinkShm* shm, uint32_t t_ms, float openL, float openR);
+int blinkd_shm_push(BlinkdShm* shm, uint32_t t_ms, float openL, float openR);
 
 // Destroy/unmap shared memory
-void blink_shm_close(BlinkShm* shm);
+void blinkd_shm_close(BlinkdShm* shm);
 
 #endif // __unix__
 
 #ifdef BLINKD_DEBUG
-void blink_debug_dump(const BlinkHandle* h);
+void blinkd_debug_dump(const BlinkdHandle* h);
 #endif
 
 #ifdef __cplusplus
