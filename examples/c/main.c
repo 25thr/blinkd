@@ -24,7 +24,6 @@
 
 int main(void) {
     printf("[blinkd] Initializing blink detection engine...\n");
-    setvbuf(stdout, NULL, _IOLBF, 0); // auto-flush each line
 
 #ifndef _WIN32
   // POSIX sockets don't need initialization
