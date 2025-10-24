@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-High-performance eye openness feed generator for blinkd SDK.
+Eye openness feed generator for blinkd SDK.
 
 Features:
 - Real-time MediaPipe FaceMesh landmark detection

@@ -32,6 +32,12 @@ The C implementation which is language-agnostic comes with,
 - **IPC built-in**: UDP JSON events for game engines (Unreal Engine, Godot, Unity), plus an _optional POSIX shared-memory ring buffer_ for high-rate pipelines
 - **O(1)** per sample: No external deps for the core
 
+## Architecture
+
+<p align="center">
+  <img src="https://github.com/0x48piraj/blinkd/blob/master/docs/assets/blinkd_process_pipeline.png" alt="Architecture diagram">
+</p>
+
 ### Feeding
 
 Provide _openness_ in `[0..1]` per eye at ~120–240 Hz. Map any upstream signal to that range, e.g.:
@@ -148,7 +154,7 @@ Available presets:
 * `BLINK_PRESET_HIGH`: For clean input, fast detection
 * `BLINK_PRESET_BALANCED` *(default)*: Safe middle ground
 
-### Example: Custom Configuration
+### Example: Custom configuration
 
 ```c
 BlinkdHandle* h = blinkd_create(init_open);
@@ -168,10 +174,3 @@ cmake --build . --config Release
 ```
 
 Clients (apps, game engines, etc.) can easily consume them.
-
-## Architecture
-
-```
-[Camera + EAR] → [Blinkd FSM] → [Event Queue] → 
-→ [uinput / SendInput / WebSocket / Game Plugin] → [Games & Apps]
-```
