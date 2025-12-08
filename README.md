@@ -2,15 +2,15 @@
 
 **Real-time blink detection engine turning blinks into actions for games, accessibility, and next-gen interfaces.**
 
-`blinkd` is essentially a **low-latency, hardware-agnostic, eye-blink input layer**, like a **"blink driver"** for real-time interactions.
+`blinkd` is essentially a **low-level, hardware-agnostic, eye-blink input layer**, like a **"blink driver"** for real-time interactions.
 
 **Note for builders**
 
-*`blinkd` is a low-latency input kernel. It does one thing well: turn eyelid signals into clean events. Designed to be real-time and input-source neutral. If you're building with it, you're building from the metal up.*
+*`blinkd` is a low-level input system. It does one thing well: turn eyelid signals into clean events. Designed to be real-time and input-source neutral. If you're building with it, you're building from the metal up.*
 
-### Ollo SDK
+### Get Ollo SDK
 
-For production-grade eye-tracking, the **Ollo SDK** offers a complete, high-performance solution with:
+For production-grade eye-tracking, the **[Ollo SDK](https://ollosdk.com/)** offers a complete, high-performance solution with:
 
 * **Plug-and-play tracking** for reliable detection out of the box
 * **Low-latency, high-performance pipelines** with platform-specific optimizations
@@ -21,11 +21,11 @@ For production-grade eye-tracking, the **Ollo SDK** offers a complete, high-perf
 * **Secure on-device processing** to protect user data
 * **GPU acceleration** for maximum performance
 
-> **[![Beta Free](https://img.shields.io/badge/Beta-Free-brightgreen)](https://ollosdk.com/) Exciting news:** As of now, the Beta version of **Ollo SDK** is available for **evaluation use at no cost**.
+> **[![Beta Free](https://img.shields.io/badge/Beta-Free-brightgreen)](https://ollosdk.com/) Exciting news:** As of now, the Beta version of **[Ollo SDK](https://ollosdk.com/)** is [available](https://ollosdk.com/) for **evaluation use at no cost**.
 
 > Get early access and be among the first to supercharge your game dev projects with cutting-edge eye tracking!
 
-**Ollo SDK** delivers a full computer-vision pipeline with ML-based eye tracking, enabling robust, production-ready solutions while keeping integration seamless.
+**[Ollo SDK](https://ollosdk.com/)** delivers a full computer-vision pipeline with ML-based eye tracking, enabling robust, production-ready solutions while keeping integration seamless.
 
 This could become foundational tech for:
 
@@ -35,7 +35,7 @@ This could become foundational tech for:
 * **Biometric interfaces** _(fatigue detection, attentiveness)_
 * **Expression-based UI** _(hands-free UI control)_
 
-We're building a **real-time eye input kernel**, which:
+We're building a **real-time eye input system**, which:
 
 1. Ingests camera data
 2. Processes it into a clean binary event stream (`BLINK`, `LONG_BLINK`, `WINK_LEFT`, etc.)
@@ -52,6 +52,12 @@ The C implementation which is language-agnostic comes with,
 - Handles **one or two eyes**: Emits `BLINK`, `LONG_BLINK`, `DOUBLE_BLINK`, `WINK_LEFT`, `WINK_RIGHT`
 - **IPC built-in**: UDP JSON events for game engines (Unreal Engine, Godot, Unity), plus an _optional POSIX shared-memory ring buffer_ for high-rate pipelines
 - **O(1)** per sample: No external deps for the core
+
+## Usage
+
+For developers interested in seeing **Blinkd** in action with **Godot 4**, we provide a minimal demo in a separate repository: [**blinkd-godot-demo**](https://github.com/25thr/blinkd-godot-demo).
+
+This demo showcases a single scene where blink events drive gameplay: flashing a 3D sphere and updating a UI label—serving as a reference for integrating Blinkd into your own Godot projects. It's lightweight, easy to run, and demonstrates real-time blink-driven input without requiring complex camera setups.
 
 ## Architecture
 
@@ -219,8 +225,8 @@ Blinkd OSS focuses on being tiny and dependency-free.
 - No advanced head-pose correction techniques, smoothing filters and algorithms
 - No customer support
 
-**All of these features are available in the Ollo SDK.**
+**All of these features are available in the [Ollo SDK](https://ollosdk.com/).**
 
 ## Upgrading to Ollo SDK
 
-If you outgrow the basic EAR-only detector, **Ollo SDK** offers better performance and seamless migration from the OSS SDK, letting you scale to production with **minimal changes**.
+If you outgrow the basic EAR-only detector, **[Ollo SDK](https://ollosdk.com/)** offers better performance and seamless migration from the OSS SDK, letting you scale to production with **minimal changes**.
