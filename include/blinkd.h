@@ -13,6 +13,10 @@
   Integrate with a camera pipeline by mapping any eye openness estimator to [0..1]
   (e.g., Eye Aspect Ratio, iris distance, or segmentation percent-open).
 
+  NOTE: This OSS edition expects the caller to compute openness [0..1].
+  Blinkd Pro SDK includes a native custom-built Mediapipe-based landmark tracking integration that computes openness automatically.
+  Production pipelines should use the Pro SDK's ML-based backend.
+
   Author: 03C0
 */
 
@@ -52,6 +56,7 @@ void blinkd_set_timing(BlinkdHandle* h,
 void blinkd_set_wink_min(BlinkdHandle* h, uint32_t wink_min_ms);
 
 // Presets for convenience
+// For high-accuracy, noise-resistant landmark extraction with minimal setup, look into Blinkd Pro SDK
 typedef enum { BLINK_PRESET_LOW=0, BLINK_PRESET_BALANCED=1, BLINK_PRESET_HIGH=2 } BlinkPreset;
 void blinkd_set_preset(BlinkdHandle* h, BlinkPreset p);
 

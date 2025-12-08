@@ -8,6 +8,25 @@
 
 *`blinkd` is a low-latency input kernel. It does one thing well: turn eyelid signals into clean events. Designed to be real-time and input-source neutral. If you're building with it, you're building from the metal up.*
 
+### Ollo SDK
+
+For production-grade eye-tracking, the **Ollo SDK** offers a complete, high-performance solution with:
+
+* **Plug-and-play tracking** for reliable detection out of the box
+* **Low-latency, high-performance pipelines** with platform-specific optimizations
+* **High-reliability blink and eye tracking** for demanding applications
+* **Native bindings** for popular game engines: Unity, Unreal, and Godot 3/4
+* **C++ API with asynchronous pipelines** for flexible integration
+* **Cross-platform packaging** for Windows, macOS and Linux
+* **Secure on-device processing** to protect user data
+* **GPU acceleration** for maximum performance
+
+> **[![Beta Free](https://img.shields.io/badge/Beta-Free-brightgreen)](https://ollosdk.com/) Exciting news:** As of now, the Beta version of **Ollo SDK** is available for **evaluation use at no cost**.
+
+> Get early access and be among the first to supercharge your game dev projects with cutting-edge eye tracking!
+
+**Ollo SDK** delivers a full computer-vision pipeline with ML-based eye tracking, enabling robust, production-ready solutions while keeping integration seamless.
+
 This could become foundational tech for:
 
 * **Games**
@@ -27,6 +46,8 @@ We're building a **real-time eye input kernel**, which:
 
 The C implementation which is language-agnostic comes with,
 
+- **Simple**: Not super accurate by design
+- Works out-of-the-box
 - **Real-time detector**: EMA-based adaptive thresholds + hysteresis + refractory
 - Handles **one or two eyes**: Emits `BLINK`, `LONG_BLINK`, `DOUBLE_BLINK`, `WINK_LEFT`, `WINK_RIGHT`
 - **IPC built-in**: UDP JSON events for game engines (Unreal Engine, Godot, Unity), plus an _optional POSIX shared-memory ring buffer_ for high-rate pipelines
@@ -38,9 +59,24 @@ The C implementation which is language-agnostic comes with,
   <img src="https://github.com/0x48piraj/blinkd/blob/master/docs/assets/blinkd_process_pipeline.png" alt="Architecture diagram">
 </p>
 
+## Blinkd OSS vs Ollo SDK
+
+| Feature | Blinkd OSS | Ollo SDK |
+|--------|------------|------------|
+| Core detector | EMA + FSM | Native landmark pipeline |
+| Accuracy | ⭐⭐☆☆☆ | ⭐⭐⭐⭐⭐ |
+| EAR input | external only | Baked-in |
+| Head pose | ❌ | Advanced head-pose correction algorithms |
+| Eye landmarks | ❌ | 6 / 468 / 478 landmark sets |
+| Backends | ❌ | Enterprise + Dlib (as fallback) |
+| FPS | 30-60 (depends on source) | 60-120 (optimized) |
+| Game engines support | via UDP | native bindings |
+| IPC | UDP + POSIX shm | Direct API events |
+| Intended for | Hobbyists, testing | Game development, VR/AR, interactive real-time experiences |
+
 ### Feeding
 
-Provide _openness_ in `[0..1]` per eye at ~120–240 Hz. Map any upstream signal to that range, e.g.:
+Provide _openness_ in `[0..1]` per eye at ~120-240 Hz. Map any upstream signal to that range, e.g.:
 
 - **Eye Aspect Ratio (EAR)**: normalize per-user to `[0..1]`
 - **Iris/eyelid distance** or **segmentation % open**
@@ -174,3 +210,17 @@ cmake --build . --config Release
 ```
 
 Clients (apps, game engines, etc.) can easily consume them.
+
+## Limitations
+
+Blinkd OSS focuses on being tiny and dependency-free.
+
+- No advanced processing pipeline or fallbacks
+- No advanced head-pose correction techniques, smoothing filters and algorithms
+- No customer support
+
+**All of these features are available in the Ollo SDK.**
+
+## Upgrading to Ollo SDK
+
+If you outgrow the basic EAR-only detector, **Ollo SDK** offers better performance and seamless migration from the OSS SDK, letting you scale to production with **minimal changes**.
