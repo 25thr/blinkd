@@ -1,3 +1,14 @@
+/*
+  Blinkd Demo: Reads eye openness samples from stdin and broadcasts blink events via UDP.
+  - Demonstrates usage of the Blinkd low-level API
+  - Accepts input in the format: t_ms openL openR (time in ms, left eye openness, right eye openness)
+  - Detects blinks, winks, long blinks, double blinks
+  - Sends JSON events over UDP to localhost:7777
+  - Works cross-platform (Windows / POSIX)
+
+  Author: 03C0
+*/
+
 #ifdef _WIN32
   #define WIN32_LEAN_AND_MEAN
   #include <winsock2.h>
@@ -36,7 +47,7 @@ if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) {
 #endif
 
     BlinkdHandle* B = blinkd_create(1.0f);
-    blinkd_set_preset(B, BLINK_PRESET_HIGH);
+    blinkd_set_preset(B, BLINKD_PRESET_HIGH);
     if (!B) {
         printf("[blinkd] ERROR: Failed to create blinkd instance.\n");
 #ifdef _WIN32
@@ -76,7 +87,7 @@ if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) {
 blinkd_debug_dump(B);
 #endif
 
-            if (flags & BLINK_EVT_BLINK) {
+            if (flags & BLINKD_EVT_BLINK) {
                 printf("[blinkd] Blink detected! Duration=%ums Flags=0x%X\n", dur, flags);
                 blinkd_udp_send(sock, "blink", t, dur, flags);
             }

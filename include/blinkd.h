@@ -33,12 +33,12 @@ extern "C" {
 typedef struct BlinkdHandle BlinkdHandle;
 
 enum {
-  BLINK_EVT_NONE        = 0,
-  BLINK_EVT_BLINK       = 1<<0,
-  BLINK_EVT_LONG_BLINK  = 1<<1,
-  BLINK_EVT_DOUBLE_BLINK= 1<<2,
-  BLINK_EVT_WINK_LEFT   = 1<<3,
-  BLINK_EVT_WINK_RIGHT  = 1<<4
+  BLINKD_EVT_NONE        = 0,
+  BLINKD_EVT_BLINK       = 1<<0,
+  BLINKD_EVT_LONG_BLINK  = 1<<1,
+  BLINKD_EVT_DOUBLE_BLINK= 1<<2,
+  BLINKD_EVT_WINK_LEFT   = 1<<3,
+  BLINKD_EVT_WINK_RIGHT  = 1<<4
 };
 
 // Lifecycle
@@ -57,8 +57,8 @@ void blinkd_set_wink_min(BlinkdHandle* h, uint32_t wink_min_ms);
 
 // Presets for convenience
 // For high-accuracy, noise-resistant landmark extraction with minimal setup, look into Blinkd Pro SDK
-typedef enum { BLINK_PRESET_LOW=0, BLINK_PRESET_BALANCED=1, BLINK_PRESET_HIGH=2 } BlinkPreset;
-void blinkd_set_preset(BlinkdHandle* h, BlinkPreset p);
+typedef enum { BLINKD_PRESET_LOW=0, BLINKD_PRESET_BALANCED=1, BLINKD_PRESET_HIGH=2 } BlinkdPreset;
+void blinkd_set_preset(BlinkdHandle* h, BlinkdPreset p);
 
 // Runtime updates
 int blinkd_update(BlinkdHandle* h, uint32_t t_ms,
@@ -69,8 +69,8 @@ int blinkd_update_single(BlinkdHandle* h, uint32_t t_ms,
                         float open, uint32_t* out_dur_ms, uint32_t* out_flags);
 
 // Calibration helpers
-void blinkd_reset_baseline(BlinkdHandle* h, float baseline, float dev);
-void blinkd_calibrate_sample(BlinkdHandle* h, float open);
+void blinkd_calibration_reset(BlinkdHandle* h, float baseline, float dev);
+void blinkd_calibration_update(BlinkdHandle* h, float open);
 
 // IPC utilities (optional, for engines / external listeners)
 int  blinkd_udp_open(const char* ip, uint16_t port);

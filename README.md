@@ -57,7 +57,14 @@ The C implementation which is language-agnostic comes with,
 
 For developers interested in seeing **Blinkd** in action with **Godot 4**, we provide a minimal demo in a separate repository: [**blinkd-godot-demo**](https://github.com/25thr/blinkd-godot-demo).
 
-This demo showcases a single scene where blink events drive gameplay: flashing a 3D sphere and updating a UI label—serving as a reference for integrating Blinkd into your own Godot projects. It's lightweight, easy to run, and demonstrates real-time blink-driven input without requiring complex camera setups.
+This demo showcases a single scene where blink events drive gameplay.
+
+* **3D sphere flashes** when a blink is detected
+* **UI label updates** with blink count and timing
+* Serves as a **reference for integrating Blinkd** into your own Godot projects
+* Lightweight and easy to run
+
+Demonstrates **real-time blink-driven input** without complex camera setups.
 
 ## Architecture
 
@@ -65,9 +72,9 @@ This demo showcases a single scene where blink events drive gameplay: flashing a
   <img src="https://github.com/0x48piraj/blinkd/blob/master/docs/assets/blinkd_process_pipeline.png" alt="Architecture diagram">
 </p>
 
-## Blinkd OSS vs Ollo SDK
+## Blinkd vs Ollo SDK
 
-| Feature | Blinkd OSS | Ollo SDK |
+| Feature | Blinkd | Ollo SDK |
 |--------|------------|------------|
 | Core detector | EMA + FSM | Native landmark pipeline |
 | Accuracy | ⭐⭐☆☆☆ | ⭐⭐⭐⭐⭐ |
@@ -187,14 +194,14 @@ This sets the **minimum duration** for a one-eye blink to qualify as a wink.
 To simplify tuning, you can use one of the built-in presets:
 
 ```c
-void blinkd_set_preset(BlinkdHandle* h, BlinkPreset preset);
+void blinkd_set_preset(BlinkdHandle* h, BlinkdPreset preset);
 ```
 
 Available presets:
 
-* `BLINK_PRESET_LOW`: For noisy input (e.g. low-res cams, shaky face)
-* `BLINK_PRESET_HIGH`: For clean input, fast detection
-* `BLINK_PRESET_BALANCED` *(default)*: Safe middle ground
+* `BLINKD_PRESET_LOW`: For noisy input (e.g. low-res cams, shaky face)
+* `BLINKD_PRESET_HIGH`: For clean input, fast detection
+* `BLINKD_PRESET_BALANCED` *(default)*: Safe middle ground
 
 ### Example: Custom configuration
 
@@ -219,7 +226,7 @@ Clients (apps, game engines, etc.) can easily consume them.
 
 ## Limitations
 
-Blinkd OSS focuses on being tiny and dependency-free.
+**Blinkd** focuses on being tiny and dependency-free.
 
 - No advanced processing pipeline or fallbacks
 - No advanced head-pose correction techniques, smoothing filters and algorithms
@@ -229,4 +236,4 @@ Blinkd OSS focuses on being tiny and dependency-free.
 
 ## Upgrading to Ollo SDK
 
-If you outgrow the basic EAR-only detector, **[Ollo SDK](https://ollosdk.com/)** offers better performance and seamless migration from the OSS SDK, letting you scale to production with **minimal changes**.
+If you outgrow the basic EAR-only detector, **[Ollo SDK](https://ollosdk.com/)** offers better performance and seamless migration from the Blinkd SDK, letting you scale to production with **minimal changes**.

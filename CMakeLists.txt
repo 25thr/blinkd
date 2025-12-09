@@ -18,7 +18,7 @@ include_directories(${CMAKE_SOURCE_DIR}/include)
 
 # SDK Library (blinkd)
 add_library(blinkd STATIC
-    src/engine/metal/blinkd.c
+    src/engine/blinkd.c
 )
 
 # Example executable (main.c)

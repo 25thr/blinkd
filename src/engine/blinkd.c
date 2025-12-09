@@ -1,9 +1,9 @@
 /*
-  Blinkd: A low-latency, hardware-agnostic, eye-blink input layer, like a "blink driver" for real-time interactions.
+  Blinkd: A low-level, hardware-agnostic, eye-blink input layer, like a "blink driver" for real-time interactions.
   - Ultra-lightweight, dependency-free core detector (O(1) per sample)
   - Works with 1 or 2 eye channels (openness in [0..1])
   - Adaptive baseline (thresholds using EMA) + robust noise deviation estimator
-  - Finite State Machine with hysteresis + refractory to avoid chatter
+  - Finite State Machine (FSM) with hysteresis + refractory to avoid chatter
   - Calibration and sensitivity presets
   - Emits events: BLINK, LONG_BLINK, DOUBLE_BLINK, WINK_LEFT, WINK_RIGHT
   - IPC: UDP JSON broadcast (for Unity, Unreal, Godot)
@@ -113,7 +113,7 @@ static inline void update_stats(EyeDet* d,float open,int open_like){
   if(d->dev<1e-3f) d->dev=1e-3f;
 }
 
-static uint32_t eyedet_update(EyeDet* d,uint32_t t_ms,float open,uint32_t* blink_ms){
+static uint32_t blinkd_detector_update(EyeDet* d,uint32_t t_ms,float open,uint32_t* blink_ms){
   uint32_t ev=0; if(blink_ms)*blink_ms=0; open=clamp01(open);
   if(t_ms < d->enter_ms) return 0; // ignore out-of-order
   d->last=open;
@@ -136,10 +136,10 @@ static uint32_t eyedet_update(EyeDet* d,uint32_t t_ms,float open,uint32_t* blink
       if(open>=open_thr){
         if(dur>=d->min_ms && dur<=d->max_ms){
           if(blink_ms)*blink_ms=dur;
-          ev|=BLINK_EVT_BLINK;
-          if(dur>=d->long_ms) ev|=BLINK_EVT_LONG_BLINK;
+          ev|=BLINKD_EVT_BLINK;
+          if(dur>=d->long_ms) ev|=BLINKD_EVT_LONG_BLINK;
           if(d->last_was_blink && (t_ms - d->last_end_ms)<=d->dbl_gap_ms)
-            ev|=BLINK_EVT_DOUBLE_BLINK;
+            ev|=BLINKD_EVT_DOUBLE_BLINK;
           d->last_was_blink=1; d->last_end_ms=t_ms;
         } else d->last_was_blink=0;
         d->st=EYE_REFRACT; d->enter_ms=t_ms;
@@ -179,10 +179,10 @@ void blinkd_set_timing(BlinkdHandle* h,uint32_t min_blink_ms,uint32_t long_blink
 }
 void blinkd_set_wink_min(BlinkdHandle* h,uint32_t wink_min_ms){ h->wink_min_ms=wink_min_ms; }
 
-void blinkd_set_preset(BlinkdHandle* h,BlinkPreset p){
+void blinkd_set_preset(BlinkdHandle* h, BlinkdPreset p){
   switch(p){
-    case BLINK_PRESET_LOW:   blinkd_set_thresholds(h,3.0f,2.0f); blinkd_set_timing(h,60,500,1000,300,80); break;
-    case BLINK_PRESET_HIGH:  blinkd_set_thresholds(h,2.0f,1.2f); blinkd_set_timing(h,30,300,700,250,50); break;
+    case BLINKD_PRESET_LOW:   blinkd_set_thresholds(h,3.0f,2.0f); blinkd_set_timing(h,60,500,1000,300,80); break;
+    case BLINKD_PRESET_HIGH:  blinkd_set_thresholds(h,2.0f,1.2f); blinkd_set_timing(h,30,300,700,250,50); break;
     default: /* balanced */  blinkd_set_thresholds(h,2.5f,1.5f); blinkd_set_timing(h,40,400,800,300,60); break;
   }
 }
@@ -190,34 +190,34 @@ void blinkd_set_preset(BlinkdHandle* h,BlinkPreset p){
 int blinkd_update(BlinkdHandle* h,uint32_t t_ms,float openL,float openR,
                  uint32_t* out_dur_ms,uint32_t* out_flags){
   uint32_t msL=0,msR=0;
-  uint32_t evL=eyedet_update(&h->L,t_ms,openL,&msL);
-  uint32_t evR=eyedet_update(&h->R,t_ms,openR,&msR);
+  uint32_t evL=blinkd_detector_update(&h->L,t_ms,openL,&msL);
+  uint32_t evR=blinkd_detector_update(&h->R,t_ms,openR,&msR);
   uint32_t ev=evL|evR;
   if(out_dur_ms) *out_dur_ms=(msL>msR?msL:msR);
   // Wink detection
-  if((evL&BLINK_EVT_BLINK) && !(evR&BLINK_EVT_BLINK) &&
+  if((evL&BLINKD_EVT_BLINK) && !(evR&BLINKD_EVT_BLINK) &&
      msL>=h->wink_min_ms && h->R.last > h->R.baseline - 1.0f*h->R.dev)
-    ev|=BLINK_EVT_WINK_LEFT;
-  if((evR&BLINK_EVT_BLINK) && !(evL&BLINK_EVT_BLINK) &&
+    ev|=BLINKD_EVT_WINK_LEFT;
+  if((evR&BLINKD_EVT_BLINK) && !(evL&BLINKD_EVT_BLINK) &&
      msR>=h->wink_min_ms && h->L.last > h->L.baseline - 1.0f*h->L.dev)
-    ev|=BLINK_EVT_WINK_RIGHT;
+    ev|=BLINKD_EVT_WINK_RIGHT;
   if(out_flags) *out_flags=ev;
   return (int)ev;
 }
 
 int blinkd_update_single(BlinkdHandle* h,uint32_t t_ms,float open,
                         uint32_t* out_dur_ms,uint32_t* out_flags){
-  uint32_t ev=eyedet_update(&h->L,t_ms,open,out_dur_ms);
+  uint32_t ev=blinkd_detector_update(&h->L,t_ms,open,out_dur_ms);
   if(out_flags) *out_flags=ev;
   return (int)ev;
 }
 
-void blinkd_reset_baseline(BlinkdHandle* h,float baseline,float dev){
+void blinkd_calibration_reset(BlinkdHandle* h,float baseline,float dev){
   h->L.baseline=h->R.baseline=baseline;
   h->L.dev=h->R.dev=dev;
 }
 
-void blinkd_calibrate_sample(BlinkdHandle* h,float open){
+void blinkd_calibration_update(BlinkdHandle* h,float open){
   // simple calibration using open-eye samples
   h->L.baseline=ema(h->L.baseline,open,h->L.ema_alpha);
   h->R.baseline=ema(h->R.baseline,open,h->R.ema_alpha);

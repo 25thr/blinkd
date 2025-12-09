@@ -217,7 +217,7 @@ int main(int argc, char **argv) {
 
   // Link to blinkd SDK
   BlinkdHandle *B = blinkd_create(1.0f);
-  blinkd_set_preset(B, BLINK_PRESET_BALANCED);
+  blinkd_set_preset(B, BLINKD_PRESET_BALANCED);
 
   uint64_t t0 = now_ms();
   cv::Mat frame;
@@ -245,11 +245,11 @@ int main(int argc, char **argv) {
 
     if (flags) {
       if (a.use_udp) {
-        if (flags & BLINK_EVT_BLINK) udp_send(udp, "blink", t_ms, dur_ms, flags);
-        if (flags & BLINK_EVT_WINK_LEFT) udp_send(udp, "wink_left", t_ms, dur_ms, flags);
-        if (flags & BLINK_EVT_WINK_RIGHT) udp_send(udp, "wink_right", t_ms, dur_ms, flags);
-        if (flags & BLINK_EVT_LONG_BLINK) udp_send(udp, "long_blink", t_ms, dur_ms, flags);
-        if (flags & BLINK_EVT_DOUBLE_BLINK) udp_send(udp, "double_blink", t_ms, dur_ms, flags);
+        if (flags & BLINKD_EVT_BLINK) udp_send(udp, "blink", t_ms, dur_ms, flags);
+        if (flags & BLINKD_EVT_WINK_LEFT) udp_send(udp, "wink_left", t_ms, dur_ms, flags);
+        if (flags & BLINKD_EVT_WINK_RIGHT) udp_send(udp, "wink_right", t_ms, dur_ms, flags);
+        if (flags & BLINKD_EVT_LONG_BLINK) udp_send(udp, "long_blink", t_ms, dur_ms, flags);
+        if (flags & BLINKD_EVT_DOUBLE_BLINK) udp_send(udp, "double_blink", t_ms, dur_ms, flags);
       }
       if (a.show) {
         char txt[128];
