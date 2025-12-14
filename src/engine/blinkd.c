@@ -1,20 +1,23 @@
-/*
-  Blinkd: A low-level, hardware-agnostic, eye-blink input layer, like a "blink driver" for real-time interactions.
-  - Ultra-lightweight, dependency-free core detector (O(1) per sample)
-  - Works with 1 or 2 eye channels (openness in [0..1])
-  - Adaptive baseline (thresholds using EMA) + robust noise deviation estimator
-  - Finite State Machine (FSM) with hysteresis + refractory to avoid chatter
-  - Calibration and sensitivity presets
-  - Emits events: BLINK, LONG_BLINK, DOUBLE_BLINK, WINK_LEFT, WINK_RIGHT
-  - IPC: UDP JSON broadcast (for Unity, Unreal, Godot)
-  - Optional POSIX shared-memory ring (for IPC with camera producers)
-  - C99 API, ABI-stable
-
-  Integrate with a camera pipeline by mapping any eye openness estimator to [0..1]
-  (e.g., Eye Aspect Ratio, iris distance, or segmentation percent-open).
-
-  Author: 03C0
-*/
+/**
+ * Blinkd: A low-level, hardware-agnostic, eye-blink input layer, like a "blink driver" for real-time interactions.
+ * - Ultra-lightweight, dependency-free real-time detection of blinks, long/double blinks and winks (O(1) per sample)
+ * - Works with 1 or 2 eye channels (normalized openness in [0..1])
+ * - Adaptive baseline (thresholds using EMA) + robust noise deviation estimator
+ * - Finite-state machine (FSM) with hysteresis + refractory to avoid chatter
+ * - Calibration and sensitivity presets
+ * - IPC via UDP JSON broadcast (for Unity, Unreal, Godot and other game engines)
+ * - Optional POSIX shared-memory ring (for IPC with camera producers)
+ * - C99 API, ABI-stable
+ *
+ * NOTE:
+ * This project operates purely on scalar openness inputs [0..1] and does NOT
+ * perform camera capture, landmark extraction, or ML inference.
+ *
+ * For a production-ready SDK with camera pipelines, auto-calibration,
+ * and ML-based landmark backends, see Ollo SDK (https://ollosdk.com).
+ *
+ * Author: 03C0
+ */
 
 #define _GNU_SOURCE
 #include "blinkd.h"
@@ -29,12 +32,12 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-// Platform compatibility layer
 #ifdef _WIN32
   // Prevent <windows.h> from including the old <winsock.h>
   #ifndef WIN32_LEAN_AND_MEAN
   #define WIN32_LEAN_AND_MEAN
   #endif
+
   #include <winsock2.h>
   #include <ws2tcpip.h>
   #include <windows.h>
@@ -43,7 +46,10 @@
   #define close closesocket
   #define usleep(x) Sleep((x)/1000)
 
-  // clock_gettime substitute for Windows
+  /*
+   * Windows does not provide clock_gettime(CLOCK_MONOTONIC).
+   * We emulate it using QueryPerformanceCounter.
+   */
   static inline int clock_gettime_monotonic(struct timespec* ts) {
       static LARGE_INTEGER freq, start;
       static int initialized = 0;
@@ -61,166 +67,252 @@
   }
   #define clock_gettime(id, ts) clock_gettime_monotonic(ts)
 
-#else
-  // POSIX/Linux/macOS
+#else /* POSIX */
+
   #include <unistd.h>
   #include <sys/types.h>
   #include <sys/socket.h>
   #include <netinet/in.h>
   #include <arpa/inet.h>
-#endif
 
-// Internal state machine
-typedef enum { EYE_OPEN=0, EYE_CLOSING, EYE_CLOSED, EYE_REFRACT } eye_state_t;
+#endif /* platform compatibility layer */
 
+/*
+ * Eye state machine:
+ *
+ * OPEN -> CLOSING -> CLOSED -> REFRACT -> OPEN
+ *
+ * Thresholds are adaptive and derived from a running EMA baseline and noise
+ * estimate. The refractory state suppresses bounce and false re-detection.
+ */
+typedef enum {
+    EYE_OPEN = 0,
+    EYE_CLOSING,
+    EYE_CLOSED,
+    EYE_REFRACT
+} eye_state_t;
+
+/*
+ * Per-eye detector state.
+ */
 typedef struct {
-  float ema_alpha, noise_alpha;
-  float close_k, open_k;
-  uint32_t min_ms, long_ms, max_ms, dbl_gap_ms, refr_ms;
-  float baseline, dev, last;
-  eye_state_t st;
-  uint32_t enter_ms, last_end_ms;
-  uint8_t last_was_blink;
+    /* Adaptive signal statistics */
+    float baseline;     /* EMA of open-eye level */
+    float dev;          /* EMA of absolute deviation (noise estimate) */
+    float last;         /* Last openness sample */
+
+    /* Tuning parameters */
+    float ema_alpha;
+    float noise_alpha;
+    float close_k;
+    float open_k;
+
+    /* Timing constraints (milliseconds) */
+    uint32_t min_ms;
+    uint32_t long_ms;
+    uint32_t max_ms;
+    uint32_t dbl_gap_ms;
+    uint32_t refr_ms;
+
+    /* State machine bookkeeping */
+    eye_state_t st;
+    uint32_t enter_ms;
+    uint32_t last_end_ms;
+    uint8_t  last_was_blink;
 } EyeDet;
 
+/*
+ * Public detector handle.
+ * Contains independent left and right eye detectors.
+ */
 typedef struct BlinkdHandle {
-  EyeDet L, R;
-  uint32_t wink_min_ms;
+    EyeDet L;
+    EyeDet R;
+    uint32_t wink_min_ms;
 } BlinkdHandle;
 
 // Utility helpers
-static inline uint64_t now_monotonic_ms(void){
-  struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts);
-  return (uint64_t)ts.tv_sec*1000ull + (uint64_t)ts.tv_nsec/1000000ull;
+static inline uint64_t now_monotonic_ms(void) {
+    struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec*1000ull + (uint64_t)ts.tv_nsec/1000000ull;
 }
 static inline float clamp01(float x){return x<0?0:(x>1?1:x);}
 static inline float ema(float prev,float x,float a){return prev + a*(x-prev);}
 
-static void eyedet_init(EyeDet* d,float init_open){
-  memset(d,0,sizeof(*d));
-  d->ema_alpha=0.01f; d->noise_alpha=0.02f;
-  d->close_k=2.5f; d->open_k=1.5f;
-  d->min_ms=40; d->long_ms=400; d->max_ms=800;
-  d->dbl_gap_ms=300; d->refr_ms=60;
-  d->baseline=init_open; d->dev=0.03f; d->last=init_open;
-  d->st=EYE_OPEN; d->enter_ms = 0; // accept relative timestamp streams (t_ms starting at 0)
+static void eyedet_init(EyeDet* d,float init_open) {
+    memset(d, 0, sizeof(*d));
+
+    /* Default tuning parameters */
+    d->ema_alpha   = 0.01f;
+    d->noise_alpha = 0.02f;
+    d->close_k     = 2.5f;
+    d->open_k      = 1.5f;
+
+    /* Default timing (milliseconds) */
+    d->min_ms      = 40;
+    d->long_ms     = 400;
+    d->max_ms      = 800;
+    d->dbl_gap_ms  = 300;
+    d->refr_ms     = 60;
+
+    /* Initial signal state */
+    d->baseline    = init_open;
+    d->dev         = 0.03f;
+    d->last        = init_open;
+    d->st          = EYE_OPEN;
+    d->enter_ms    = 0; /* relative timestamp streams supported */
 }
 
-static inline void update_stats(EyeDet* d,float open,int open_like){
-  if(open_like) d->baseline=ema(d->baseline,open,d->ema_alpha);
-  float absdev=fabsf(open-d->baseline);
-  d->dev=ema(d->dev,absdev,d->noise_alpha);
-  if(d->dev<1e-3f) d->dev=1e-3f;
+static inline void update_stats(EyeDet* d,float open,int open_like) {
+    /*
+     * Update baseline only when signal appears open-like to avoid
+     * drifting baseline downward during blinks.
+     */
+    if (open_like) {
+        d->baseline = ema(d->baseline, open, d->ema_alpha);
+    }
+
+    /* Track absolute deviation as a proxy for noise */
+    float absdev = fabsf(open - d->baseline);
+    d->dev = ema(d->dev, absdev, d->noise_alpha);
+
+    /* Prevent degenerate thresholds */
+    if (d->dev < 1e-3f) {
+        d->dev = 1e-3f;
+    }
 }
 
-static uint32_t blinkd_detector_update(EyeDet* d,uint32_t t_ms,float open,uint32_t* blink_ms){
-  uint32_t ev=0; if(blink_ms)*blink_ms=0; open=clamp01(open);
-  if(t_ms < d->enter_ms) return 0; // ignore out-of-order
-  d->last=open;
-  float sigma=d->dev;
-  float close_thr=d->baseline - d->close_k*sigma;
-  float open_thr =d->baseline - d->open_k*sigma;
-  int open_like=open>=open_thr;
-  update_stats(d,open,open_like);
+/*
+ * Core single-eye detector update.
+ *
+ * Consumes one openness sample and advances the state machine.
+ * Returns a bitmask of BLINKD_EVT_* flags.
+ */
+static uint32_t blinkd_detector_update(EyeDet* d,uint32_t t_ms,float open,uint32_t* blink_ms) {
+    uint32_t ev=0; if(blink_ms)*blink_ms=0; open=clamp01(open);
+    if(t_ms < d->enter_ms) return 0; // ignore out-of-order
+    d->last=open;
+    float sigma=d->dev;
+    float close_thr=d->baseline - d->close_k*sigma;
+    float open_thr =d->baseline - d->open_k*sigma;
+    int open_like=open>=open_thr;
+    update_stats(d,open,open_like);
 
-  switch(d->st){
-    case EYE_OPEN:
-      if(open<close_thr){ d->st=EYE_CLOSING; d->enter_ms=t_ms; }
-      break;
-    case EYE_CLOSING:
-      if(open<close_thr){ d->st=EYE_CLOSED; d->enter_ms=t_ms; }
-      else if(open>=open_thr){ d->st=EYE_OPEN; }
-      break;
-    case EYE_CLOSED:{
-      uint32_t dur=t_ms - d->enter_ms;
-      if(open>=open_thr){
-        if(dur>=d->min_ms && dur<=d->max_ms){
-          if(blink_ms)*blink_ms=dur;
-          ev|=BLINKD_EVT_BLINK;
-          if(dur>=d->long_ms) ev|=BLINKD_EVT_LONG_BLINK;
-          if(d->last_was_blink && (t_ms - d->last_end_ms)<=d->dbl_gap_ms)
-            ev|=BLINKD_EVT_DOUBLE_BLINK;
-          d->last_was_blink=1; d->last_end_ms=t_ms;
-        } else d->last_was_blink=0;
-        d->st=EYE_REFRACT; d->enter_ms=t_ms;
-      }
-    } break;
-    case EYE_REFRACT:
-      if((t_ms - d->enter_ms)>=d->refr_ms) d->st=EYE_OPEN;
-      break;
-  }
-  return ev;
+    switch(d->st){
+      case EYE_OPEN:
+        if(open<close_thr){ d->st=EYE_CLOSING; d->enter_ms=t_ms; }
+        break;
+      case EYE_CLOSING:
+        if(open<close_thr){ d->st=EYE_CLOSED; d->enter_ms=t_ms; }
+        else if(open>=open_thr){ d->st=EYE_OPEN; }
+        break;
+      case EYE_CLOSED:{
+        uint32_t dur=t_ms - d->enter_ms;
+        if(open>=open_thr){
+          if(dur>=d->min_ms && dur<=d->max_ms){
+            if(blink_ms)*blink_ms=dur;
+            ev|=BLINKD_EVT_BLINK;
+            if(dur>=d->long_ms) ev|=BLINKD_EVT_LONG_BLINK;
+            if(d->last_was_blink && (t_ms - d->last_end_ms)<=d->dbl_gap_ms)
+              ev|=BLINKD_EVT_DOUBLE_BLINK;
+            d->last_was_blink=1; d->last_end_ms=t_ms;
+          } else d->last_was_blink=0;
+          d->st=EYE_REFRACT; d->enter_ms=t_ms;
+        }
+      } break;
+      case EYE_REFRACT:
+        if((t_ms - d->enter_ms)>=d->refr_ms) d->st=EYE_OPEN;
+        break;
+    }
+    return ev;
 }
 
 // Public API implementation
-BlinkdHandle* blinkd_create(float init_open){
-  BlinkdHandle* h=(BlinkdHandle*)calloc(1,sizeof(BlinkdHandle));
-  if(!h) return NULL;
-  eyedet_init(&h->L,init_open);
-  eyedet_init(&h->R,init_open);
-  h->wink_min_ms=60;
-  return h;
+BlinkdHandle* blinkd_create(float init_open) {
+    BlinkdHandle* h = (BlinkdHandle*)calloc(1, sizeof(BlinkdHandle));
+    if(!h) return NULL;
+
+    eyedet_init(&h->L, init_open);
+    eyedet_init(&h->R, init_open);
+
+    h->wink_min_ms = 60;
+    return h;
 }
 
 void blinkd_destroy(BlinkdHandle* h){ if(h) free(h); }
 
 void blinkd_set_ema_alpha(BlinkdHandle* h,float a){ h->L.ema_alpha=h->R.ema_alpha=a; }
+
 void blinkd_set_noise_alpha(BlinkdHandle* h,float a){ h->L.noise_alpha=h->R.noise_alpha=a; }
-void blinkd_set_thresholds(BlinkdHandle* h,float close_k,float open_k){
-  h->L.close_k=h->R.close_k=close_k; h->L.open_k=h->R.open_k=open_k;
+
+void blinkd_set_thresholds(BlinkdHandle* h,float close_k,float open_k) {
+    h->L.close_k=h->R.close_k=close_k; h->L.open_k=h->R.open_k=open_k;
 }
+
 void blinkd_set_timing(BlinkdHandle* h,uint32_t min_blink_ms,uint32_t long_blink_ms,
-                      uint32_t max_blink_ms,uint32_t double_gap_ms,uint32_t refractory_ms){
-  h->L.min_ms=h->R.min_ms=min_blink_ms;
-  h->L.long_ms=h->R.long_ms=long_blink_ms;
-  h->L.max_ms=h->R.max_ms=max_blink_ms;
-  h->L.dbl_gap_ms=h->R.dbl_gap_ms=double_gap_ms;
-  h->L.refr_ms=h->R.refr_ms=refractory_ms;
+                      uint32_t max_blink_ms,uint32_t double_gap_ms,uint32_t refractory_ms) {
+    h->L.min_ms=h->R.min_ms=min_blink_ms;
+    h->L.long_ms=h->R.long_ms=long_blink_ms;
+    h->L.max_ms=h->R.max_ms=max_blink_ms;
+    h->L.dbl_gap_ms=h->R.dbl_gap_ms=double_gap_ms;
+    h->L.refr_ms=h->R.refr_ms=refractory_ms;
 }
+
 void blinkd_set_wink_min(BlinkdHandle* h,uint32_t wink_min_ms){ h->wink_min_ms=wink_min_ms; }
 
-void blinkd_set_preset(BlinkdHandle* h, BlinkdPreset p){
-  switch(p){
-    case BLINKD_PRESET_LOW:   blinkd_set_thresholds(h,3.0f,2.0f); blinkd_set_timing(h,60,500,1000,300,80); break;
-    case BLINKD_PRESET_HIGH:  blinkd_set_thresholds(h,2.0f,1.2f); blinkd_set_timing(h,30,300,700,250,50); break;
-    default: /* balanced */  blinkd_set_thresholds(h,2.5f,1.5f); blinkd_set_timing(h,40,400,800,300,60); break;
-  }
+void blinkd_set_preset(BlinkdHandle* h, BlinkdPreset p) {
+    switch(p) {
+        case BLINKD_PRESET_LOW:
+            blinkd_set_thresholds(h, 3.0f, 2.0f);
+            blinkd_set_timing(h, 60, 500, 1000, 300, 80);
+            break;
+
+        case BLINKD_PRESET_HIGH:
+            blinkd_set_thresholds(h, 2.0f, 1.2f);
+            blinkd_set_timing(h, 30, 300, 700, 250, 50);
+            break;
+
+        default: /* BALANCED */
+            blinkd_set_thresholds(h, 2.5f, 1.5f);
+            blinkd_set_timing(h, 40, 400, 800, 300, 60);
+            break;
+    }
 }
 
 int blinkd_update(BlinkdHandle* h,uint32_t t_ms,float openL,float openR,
-                 uint32_t* out_dur_ms,uint32_t* out_flags){
-  uint32_t msL=0,msR=0;
-  uint32_t evL=blinkd_detector_update(&h->L,t_ms,openL,&msL);
-  uint32_t evR=blinkd_detector_update(&h->R,t_ms,openR,&msR);
-  uint32_t ev=evL|evR;
-  if(out_dur_ms) *out_dur_ms=(msL>msR?msL:msR);
-  // Wink detection
-  if((evL&BLINKD_EVT_BLINK) && !(evR&BLINKD_EVT_BLINK) &&
-     msL>=h->wink_min_ms && h->R.last > h->R.baseline - 1.0f*h->R.dev)
-    ev|=BLINKD_EVT_WINK_LEFT;
-  if((evR&BLINKD_EVT_BLINK) && !(evL&BLINKD_EVT_BLINK) &&
-     msR>=h->wink_min_ms && h->L.last > h->L.baseline - 1.0f*h->L.dev)
-    ev|=BLINKD_EVT_WINK_RIGHT;
-  if(out_flags) *out_flags=ev;
-  return (int)ev;
+                 uint32_t* out_dur_ms,uint32_t* out_flags) {
+    uint32_t msL=0,msR=0;
+    uint32_t evL=blinkd_detector_update(&h->L,t_ms,openL,&msL);
+    uint32_t evR=blinkd_detector_update(&h->R,t_ms,openR,&msR);
+    uint32_t ev=evL|evR;
+    if(out_dur_ms) *out_dur_ms=(msL>msR?msL:msR);
+    // Wink detection
+    if((evL&BLINKD_EVT_BLINK) && !(evR&BLINKD_EVT_BLINK) &&
+      msL>=h->wink_min_ms && h->R.last > h->R.baseline - 1.0f*h->R.dev)
+      ev|=BLINKD_EVT_WINK_LEFT;
+    if((evR&BLINKD_EVT_BLINK) && !(evL&BLINKD_EVT_BLINK) &&
+      msR>=h->wink_min_ms && h->L.last > h->L.baseline - 1.0f*h->L.dev)
+      ev|=BLINKD_EVT_WINK_RIGHT;
+    if(out_flags) *out_flags=ev;
+    return (int)ev;
 }
 
 int blinkd_update_single(BlinkdHandle* h,uint32_t t_ms,float open,
-                        uint32_t* out_dur_ms,uint32_t* out_flags){
-  uint32_t ev=blinkd_detector_update(&h->L,t_ms,open,out_dur_ms);
-  if(out_flags) *out_flags=ev;
-  return (int)ev;
+                        uint32_t* out_dur_ms,uint32_t* out_flags) {
+    uint32_t ev=blinkd_detector_update(&h->L,t_ms,open,out_dur_ms);
+    if(out_flags) *out_flags=ev;
+    return (int)ev;
 }
 
-void blinkd_calibration_reset(BlinkdHandle* h,float baseline,float dev){
-  h->L.baseline=h->R.baseline=baseline;
-  h->L.dev=h->R.dev=dev;
+void blinkd_calibration_reset(BlinkdHandle* h,float baseline,float dev) {
+    h->L.baseline=h->R.baseline=baseline;
+    h->L.dev=h->R.dev=dev;
 }
 
-void blinkd_calibration_update(BlinkdHandle* h,float open){
-  // simple calibration using open-eye samples
-  h->L.baseline=ema(h->L.baseline,open,h->L.ema_alpha);
-  h->R.baseline=ema(h->R.baseline,open,h->R.ema_alpha);
+void blinkd_calibration_update(BlinkdHandle* h,float open) {
+    // simple calibration using open-eye samples
+    h->L.baseline=ema(h->L.baseline,open,h->L.ema_alpha);
+    h->R.baseline=ema(h->R.baseline,open,h->R.ema_alpha);
 }
 
 // UDP IPC (cross-platform)
@@ -295,55 +387,56 @@ void blinkd_debug_dump(const BlinkdHandle* h) {
 #include <fcntl.h>
 
 typedef struct {
-  uint32_t t_ms;
-  float openL, openR;
+    uint32_t t_ms;
+    float openL, openR;
 } BlinkdSample;
 
 typedef struct BlinkdShm {
-  size_t cap;
-  volatile size_t head;
-  volatile size_t tail;
-  BlinkdSample data[1];
+    size_t cap;
+    volatile size_t head;
+    volatile size_t tail;
+    BlinkdSample data[1];
 } BlinkdShmRaw;
 
 struct BlinkdShm {
-  BlinkdShmRaw* r;
-  size_t bytes;
-  char name[64];
-  int fd;
+    BlinkdShmRaw* r;
+    size_t bytes;
+    char name[64];
+    int fd;
 };
 
-BlinkdShm* blinkd_shm_open(const char* name, size_t capacity){
-  if(!name || name[0] != '/') { fprintf(stderr,"shm name must start with '/'\n"); return NULL; }
-  size_t bytes = sizeof(BlinkdShmRaw) + (capacity-1)*sizeof(BlinkdSample);
-  int fd = shm_open(name, O_CREAT|O_RDWR, 0600);
-  if(fd < 0){ perror("shm_open"); return NULL; }
-  if(ftruncate(fd, (off_t)bytes) < 0){ perror("ftruncate"); close(fd); return NULL; }
-  BlinkdShmRaw* r = (BlinkdShmRaw*)mmap(NULL, bytes, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
-  if(r == MAP_FAILED){ perror("mmap"); close(fd); return NULL; }
-  r->cap = capacity; r->head = r->tail = 0;
-  BlinkdShm* h = (BlinkdShm*)calloc(1,sizeof(BlinkdShm));
-  h->r = r; h->bytes = bytes; h->fd = fd; strncpy(h->name, name, sizeof(h->name)-1);
-  return h;
+BlinkdShm* blinkd_shm_open(const char* name, size_t capacity) {
+    if(!name || name[0] != '/') { fprintf(stderr,"shm name must start with '/'\n"); return NULL; }
+    size_t bytes = sizeof(BlinkdShmRaw) + (capacity-1)*sizeof(BlinkdSample);
+    int fd = shm_open(name, O_CREAT|O_RDWR, 0600);
+    if(fd < 0){ perror("shm_open"); return NULL; }
+    if(ftruncate(fd, (off_t)bytes) < 0){ perror("ftruncate"); close(fd); return NULL; }
+    BlinkdShmRaw* r = (BlinkdShmRaw*)mmap(NULL, bytes, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
+    if(r == MAP_FAILED){ perror("mmap"); close(fd); return NULL; }
+    r->cap = capacity; r->head = r->tail = 0;
+    BlinkdShm* h = (BlinkdShm*)calloc(1,sizeof(BlinkdShm));
+    h->r = r; h->bytes = bytes; h->fd = fd; strncpy(h->name, name, sizeof(h->name)-1);
+    return h;
 }
 
-int blinkd_shm_push(BlinkdShm* shm, uint32_t t_ms, float openL, float openR){
-  if(!shm || !shm->r) return -1;
-  BlinkdShmRaw* r = shm->r;
-  size_t next = (r->head + 1) % r->cap;
-  if(next == r->tail) return -1; // full
-  BlinkdSample s = { t_ms, openL, openR };
-  r->data[r->head] = s;
-  __sync_synchronize();
-  r->head = next;
-  return 0;
+int blinkd_shm_push(BlinkdShm* shm, uint32_t t_ms, float openL, float openR) {
+    if(!shm || !shm->r) return -1;
+    BlinkdShmRaw* r = shm->r;
+    size_t next = (r->head + 1) % r->cap;
+    if(next == r->tail) return -1; // full
+    BlinkdSample s = { t_ms, openL, openR };
+    r->data[r->head] = s;
+    __sync_synchronize();
+    r->head = next;
+    return 0;
 }
 
-void blinkd_shm_close(BlinkdShm* shm){
-  if(!shm) return;
-  if(shm->r && shm->bytes) munmap((void*)shm->r, shm->bytes);
-  if(shm->fd >= 0) close(shm->fd);
-  shm_unlink(shm->name);
-  free(shm);
+void blinkd_shm_close(BlinkdShm* shm) {
+    if(!shm) return;
+    if(shm->r && shm->bytes) munmap((void*)shm->r, shm->bytes);
+    if(shm->fd >= 0) close(shm->fd);
+    shm_unlink(shm->name);
+    free(shm);
 }
+
 #endif // __unix__
