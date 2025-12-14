@@ -132,10 +132,6 @@ typedef struct BlinkdHandle {
 } BlinkdHandle;
 
 // Utility helpers
-static inline uint64_t now_monotonic_ms(void) {
-    struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (uint64_t)ts.tv_sec*1000ull + (uint64_t)ts.tv_nsec/1000000ull;
-}
 static inline float clamp01(float x){return x<0?0:(x>1?1:x);}
 static inline float ema(float prev,float x,float a){return prev + a*(x-prev);}
 
